@@ -129,3 +129,19 @@ Q7
 I would fix the three forms. Silent data loss is worse than a slow load, a user can type real information, hit submit, and lose everything with no warning, which damages trust far more in a live demo than a four second freeze that is at least explainable.
 
 The 12,000 row table still freezes for about four seconds, that stays broken. To the person who wanted virtualisation: the performance issue is real, but it is recoverable, you can narrate through a slow load. Losing typed input live is not recoverable once it happens, so it is the higher risk problem with only two days, and virtualisation should follow right after the demo.
+
+Q8
+
+Requirement 2 and 3 conflict. Select all can match products on pages not yet loaded, so the frontend does not know their SKUs, but requirement 3 needs the exact list shown before applying. It cannot show what it does not have.
+
+Requirement 4 and 5 conflict. A selection above 500 needs multiple requests, since the API caps each one at 500 ids. Split across several requests, there is no single transaction guaranteeing every product updates or none does, a later request can fail after earlier ones already succeeded.
+
+Requirement 5 and 6 conflict. True atomicity only has two outcomes, everything succeeded or nothing did. A toast reporting how many succeeded and how many failed only makes sense if partial outcomes are possible, which contradicts all or nothing.
+
+Requirement 2 versus 3: keep requirement 2, selecting everything matching a filter is a genuine need. Ticket: a server side lookup resolving the full SKU list before the confirmation dialog shows it. Question: should the dialog load every matching SKU even if there are thousands.
+
+Requirement 4 versus 5: keep requirement 5, atomicity is the stronger guarantee for a price change. Ticket: a dedicated bulk endpoint performing the update as one server side transaction, or a documented rollback strategy per batch. Question: can the backend provide one atomic bulk operation instead of the frontend sending batches of 500.
+
+Requirement 5 versus 6: keep requirement 5 again. Ticket: change the toast to report one outcome, all succeeded or all failed, not partial counts. Question: do you actually expect partial success, or must this be strictly all or nothing.
+
+Requirement 1 is the only one that survives completely unchanged, it never appears in any conflict.
