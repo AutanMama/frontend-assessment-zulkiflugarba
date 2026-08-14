@@ -115,3 +115,11 @@ Adding a new ErrorCode member becomes a compile error because the switch's defau
 An unrecognized runtime code is different: TypeScript cannot catch it, it only exists once the app is running. If assertNever simply threw, the error would escape and the user would see nothing. So the catch around it falls back to response.error.message, always present and readable regardless of whether the code is known, so an unfamiliar code still reaches the user.
 
 error.field is just a string with no relationship to the form's real field names. If the backend sends a name the form does not recognize, setFieldError attaches to nothing and the message is silently lost. TypeScript cannot catch this either, field is untyped against the form's actual fields. The real fix belongs at the API contract boundary: a shared naming convention, or a mapping layer that normalizes backend field names before the form sees them.
+
+Q6
+
+Reject the proposal. Virtualising removes off screen rows from the DOM entirely, only rows in the viewport exist as real elements. Ctrl-P and Ctrl-F both operate on the actual DOM, not React state, so both break: printing would only capture the handful of rows on screen instead of all 3,000 filtered rows, and native find would miss an order number in a row that is not currently rendered. That breaks the warehouse floor's real workflow of printing a full filtered sheet and finding an order before printing it.
+
+Instead I would use content-visibility: auto on each row. Every row stays a real DOM node with real text, so Ctrl-P and Ctrl-F keep working, but the browser skips layout and paint for off screen rows, which is likely most of the six seconds, without removing anything from the DOM.
+
+The cost: DOM node count and memory usage do not shrink, all 3,000 rows are still managed by the browser and React. It scales worse than true virtualisation, so well beyond a few thousand rows this stops being enough, and a separate print specific render alongside virtualisation would eventually be needed.
