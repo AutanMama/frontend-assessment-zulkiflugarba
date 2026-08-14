@@ -66,3 +66,52 @@ The smallest fix is to delete the final line entirely:
 setLabel(label === 'saving' ? 'done' : label);
 
 That line only exists to read a stale closure value and stomp on whatever the try or catch block just correctly set. Removing it lets the saved or failed value set inside the try/catch stand as the final, correctly painted state.
+
+Section 2 - Design and judgement
+
+Q5
+
+Design:
+
+function assertNever(x: never): never {
+  throw new Error('Unhandled case: ' + x);
+}
+
+function messageForCode(code: ErrorCode): string {
+  switch (code) {
+    case 'SUPPLIER_LOCKED': return 'This supplier is locked.';
+    case 'STOCK_NEGATIVE': return 'Stock cannot go below zero.';
+    case 'IMPORT_IN_PROGRESS': return 'An import is already running.';
+    case 'VALIDATION_FAILED': return 'Some fields are invalid.';
+    case 'RATE_LIMITED': return 'Too many requests, try again shortly.';
+    default: return assertNever(code);
+  }
+}
+
+function handleApiResponse<T>(
+  response: ApiResponse<T>,
+  options: {
+    onSuccess?: (data: T) => void;
+    onError?: (message: string, field?: string) => void;
+  }
+): void {
+  if (response.error === null) {
+    options.onSuccess?.(response.data);
+    return;
+  }
+  try {
+    options.onError?.(messageForCode(response.error.code), response.error.field);
+  } catch {
+    options.onError?.(response.error.message, response.error.field);
+  }
+}
+
+A form calls it with onError: (message, field) => setFieldError(field, message). A table calls it with onError showing a toast. A background poll omits onError entirely and stays silent. None of the three ever touch response.data or response.error directly.
+
+data ends up non-null on the success branch with no cast because ApiResponse is a discriminated union. Checking response.error === null narrows the whole union, since the two variants are structurally linked, so TypeScript already knows data is T in that branch.
+
+Adding a new ErrorCode member becomes a compile error because the switch's default branch relies on code being narrowed to never once every existing case is handled. A new unhandled member breaks that narrowing, so passing it to assertNever(x: never) no longer type checks, and the build fails.
+
+An unrecognized runtime code is different: TypeScript cannot catch it, it only exists once the app is running. If assertNever simply threw, the error would escape and the user would see nothing. So the catch around it falls back to response.error.message, always present and readable regardless of whether the code is known, so an unfamiliar code still reaches the user.
+
+error.field is just a string with no relationship to the form's real field names. If the backend sends a name the form does not recognize, setFieldError attaches to nothing and the message is silently lost. TypeScript cannot catch this either, field is untyped against the form's actual fields. The real fix belongs at the API contract boundary: a shared naming convention, or a mapping layer that normalizes backend field names before the form sees them.
