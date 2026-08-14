@@ -145,3 +145,59 @@ Requirement 4 versus 5: keep requirement 5, atomicity is the stronger guarantee 
 Requirement 5 versus 6: keep requirement 5 again. Ticket: change the toast to report one outcome, all succeeded or all failed, not partial counts. Question: do you actually expect partial success, or must this be strictly all or nothing.
 
 Requirement 1 is the only one that survives completely unchanged, it never appears in any conflict.
+
+Section 3 - Review and judgement under pressure
+
+Q9
+
+Verdict: request changes.
+
+1. FilterBar.tsx: clear() sets window.location.href = '/products', a full page navigation, which directly breaks AC-2's requirement to clear without a full reload. Author should reset suppliers to an empty array and call onChange or apply instead of navigating.
+
+2. FilterBar.tsx: the Add button pushes draft into suppliers but never resets draft afterward, and does not guard against an empty string. Clicking Add repeatedly without changing the input adds duplicates, and an empty draft can be added as a supplier. Author should clear draft after adding and skip the add when draft is empty.
+
+3. FilterBar.tsx: the description claims this converts the filter bar to a controlled component, but suppliers and draft are still local state with no effect syncing them from the value prop. If value changes externally, the displayed filters will not reflect it. Author should either actually derive the UI from value, or remove the controlled component claim from the description.
+
+4. useProducts.ts: refetchOnMountOrArgChange: true is unrelated to both acceptance criteria and changes caching behavior for every consumer of this shared hook, not just the filter bar. Author should justify this separately or move it to its own change.
+
+5. date.ts: the comment asserts formatDate was moved unchanged from OrderTable.tsx, but the diff does not show the original OrderTable.tsx code being removed, so that claim cannot be verified from this diff alone. Author should include the removal from OrderTable.tsx in the same diff.
+
+I deliberately did not comment on toLocaleDateString() itself, since the helper is stated as moved unchanged and no acceptance criterion specifies a required date format, so it is not a defect demonstrated by this change.
+
+AC-1, multiple suppliers: met. suppliers is an array and apply passes it through onChange.
+
+AC-2, clear without full reload: not met. window.location.href causes a full navigation.
+
+Q10
+
+First, freeze development, nobody pushes, merges, rebases, or force-pushes until this is resolved, and I lock the branch if I have permission. I tell the two blocked developers immediately not to push anything, recovery is starting. I record the current remote SHA and the last known good SHA before the force-push. Force-pushes do not delete commit objects or touch local reflogs, so I check the force-pusher's own reflog first, since it still has every position that branch pointed to, along with any other local clone that had pulled recently, and the host's PR refs for the four missing branches. I ask everyone not to run cleanup or reset commands that could prune that history. Once the commits are identified, I restore development and recover the PR branches from whichever source still has their tips. Another developer verifies the recovered history before I tell the two developers it is safe to resume.
+
+I would not escalate to the business owner while this is contained and production is unaffected, only if recovery fails, runs long, or threatens a deadline, with the impact and plan attached.
+
+Permanently: development becomes a protected branch, force-pushes are disallowed for normal contributors, changes go through pull requests. Whoever controls repository governance has to agree to that.
+
+Q11
+
+Message to the developer:
+
+I know you're capable of handling large changes, and I'm not questioning your ability. The concern is the risk that comes with putting 900+ lines and no tests into one change. It makes it harder to spot problems, harder for someone else to verify the work, and much more expensive to fix something after it reaches users. It also puts reviewers in a difficult position when we're under deadline pressure. I'd like us to break larger work into smaller, meaningful pieces and add tests around important behavior. The goal isn't more process for its own sake, it's to help us move faster with less rework and make sure your good work stays reliable as the team and product grow.
+
+Message to the business owner:
+
+I agree that we should ship features faster. One thing that can slow us down is releasing large changes without enough checking beforehand. When something goes wrong, we can spend much more time finding and fixing it, which delays the next feature and can affect customers. I'd like us to make changes smaller and easier to verify so we can release confidently and spend less time fixing problems after release. This helps us ship faster without sacrificing reliability.
+
+Section 4 - Experience
+
+Q12
+
+I built the authentication and payment request flow myself, both frontend and backend, in an application I work on. A user would enter their password successfully, and the flow would move to the next step asking for a verification code, but the screen gave no way to actually enter that code. The user was stuck with no path forward.
+
+The issue was reported to me. I traced it back to code I had written, fixed the flow, and tested it end to end to confirm a user could complete the entire process. I do not know exactly how long the bug had been live before it was reported.
+
+Afterward, I became more deliberate about testing complete user journeys, especially authentication flows, rather than checking individual screens or API responses in isolation. A screen can work perfectly on its own and still leave a user with no way to move forward if the step after it was never actually testable end to end.
+
+Q13
+
+Naphtech, Maker/Checker dashboard: used by business and organization administrators on a financial administration platform to control staff activities and approvals. The API already existed, I accessed the endpoints and JSON structures through Bitbucket credentials provided by my boss, and confirmed unclear requirements directly with the API provider. The hardest part was implementing the role based Maker/Checker flow so actions could be controlled and approved by the appropriate users.
+
+Spectrum Management System, application and workflow screens: used by telecom operators applying for spectrum licences and by NCC officers processing those applications. I integrated with the existing NCC eService API rather than building it myself, using the provided endpoints and contract. The hardest part was the workflow, ensuring applications were correctly routed through assignments, permissions, and multiple approval stages. I also fixed routing issues that were preventing applications from reaching the correct officers.
