@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { orders } from './data/orders';
 import type { OrderStatus } from './data/orders';
 import { useUrlState } from './useUrlState';
+import { OrderRow } from './OrderRow';
 
 const statuses: OrderStatus[] = ['NEW', 'PICKING', 'SHIPPED', 'CANCELLED'];
 
@@ -13,29 +14,46 @@ export function OrderList() {
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
 
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+  const registerRefCache = useRef<
+    Map<string, (element: HTMLTableRowElement | null) => void>
+  >(new Map());
 
-  const selectedStatuses = statusParam
-    ? (statusParam.split(',').filter(Boolean) as OrderStatus[])
-    : [];
+  const getRegisterRef = (orderId: string) => {
+    if (!registerRefCache.current.has(orderId)) {
+      registerRefCache.current.set(orderId, (element) => {
+        if (element) rowRefs.current.set(orderId, element);
+        else rowRefs.current.delete(orderId);
+      });
+    }
+    return registerRefCache.current.get(orderId)!;
+  };
 
   const toggleStatus = (status: OrderStatus) => {
-    const next = selectedStatuses.includes(status)
-      ? selectedStatuses.filter((item) => item !== status)
-      : [...selectedStatuses, status];
+    const current = statusParam ? statusParam.split(',').filter(Boolean) : [];
+    const next = current.includes(status)
+      ? current.filter((item) => item !== status)
+      : [...current, status];
 
     setStatusParam(next.join(','));
   };
 
-  const filteredOrders = orders.filter((order) => {
-    const matchesSearch = order.orderNumber
-      .toLowerCase()
-      .includes(search.toLowerCase());
+  const selectedStatuses = useMemo(
+    () => (statusParam ? (statusParam.split(',').filter(Boolean) as OrderStatus[]) : []),
+    [statusParam]
+  );
 
-    const matchesStatus =
-      selectedStatuses.length === 0 || selectedStatuses.includes(order.status);
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const matchesSearch = order.orderNumber
+        .toLowerCase()
+        .includes(search.toLowerCase());
 
-    return matchesSearch && matchesStatus;
-  });
+      const matchesStatus =
+        selectedStatuses.length === 0 || selectedStatuses.includes(order.status);
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [search, selectedStatuses]);
 
   const validSelectedOrderId = filteredOrders.some(
     (order) => order.orderNumber === selectedOrderId
@@ -45,45 +63,59 @@ export function OrderList() {
 
   const openOrder = orders.find((order) => order.orderNumber === openOrderId);
 
-  const handleKeyDown = (
-    event: React.KeyboardEvent<HTMLTableRowElement>,
-    orderId: string
-  ) => {
-    const index = filteredOrders.findIndex(
-      (order) => order.orderNumber === orderId
-    );
+  const handleRowClick = useCallback((orderId: string) => {
+    setSelectedOrderId(orderId);
+    setOpenOrderId(orderId);
+  }, []);
 
-    if (event.key === 'ArrowDown' && index < filteredOrders.length - 1) {
-      event.preventDefault();
-      const nextId = filteredOrders[index + 1].orderNumber;
-      setSelectedOrderId(nextId);
-      rowRefs.current.get(nextId)?.focus();
-    }
+  const filteredOrdersRef = useRef(filteredOrders);
+  filteredOrdersRef.current = filteredOrders;
 
-    if (event.key === 'ArrowUp' && index > 0) {
-      event.preventDefault();
-      const previousId = filteredOrders[index - 1].orderNumber;
-      setSelectedOrderId(previousId);
-      rowRefs.current.get(previousId)?.focus();
-    }
+  const openOrderIdRef = useRef(openOrderId);
+  openOrderIdRef.current = openOrderId;
 
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      setSelectedOrderId(orderId);
-      setOpenOrderId(orderId);
-    }
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLTableRowElement>, orderId: string) => {
+      const currentFilteredOrders = filteredOrdersRef.current;
+      const currentOpenOrderId = openOrderIdRef.current;
 
-    if (event.key === 'Escape' && openOrderId) {
-      event.preventDefault();
-      const previousId = openOrderId;
-      setOpenOrderId(null);
-      setSelectedOrderId(previousId);
+      const index = currentFilteredOrders.findIndex(
+        (order) => order.orderNumber === orderId
+      );
 
-      requestAnimationFrame(() => {
+      if (event.key === 'ArrowDown' && index < currentFilteredOrders.length - 1) {
+        event.preventDefault();
+        const nextId = currentFilteredOrders[index + 1].orderNumber;
+        setSelectedOrderId(nextId);
+        rowRefs.current.get(nextId)?.focus();
+      }
+
+      if (event.key === 'ArrowUp' && index > 0) {
+        event.preventDefault();
+        const previousId = currentFilteredOrders[index - 1].orderNumber;
+        setSelectedOrderId(previousId);
         rowRefs.current.get(previousId)?.focus();
-      });
-    }
-  };
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        setSelectedOrderId(orderId);
+        setOpenOrderId(orderId);
+      }
+
+      if (event.key === 'Escape' && currentOpenOrderId) {
+        event.preventDefault();
+        const previousId = currentOpenOrderId;
+        setOpenOrderId(null);
+        setSelectedOrderId(previousId);
+
+        requestAnimationFrame(() => {
+          rowRefs.current.get(previousId)?.focus();
+        });
+      }
+    },
+    []
+  );
 
   return (
     <div>
@@ -123,26 +155,15 @@ export function OrderList() {
             const isFirstRow = !validSelectedOrderId && index === 0;
 
             return (
-              <tr
+              <OrderRow
                 key={order.orderNumber}
-                ref={(element) => {
-                  if (element) rowRefs.current.set(order.orderNumber, element);
-                  else rowRefs.current.delete(order.orderNumber);
-                }}
+                order={order}
+                selected={isSelected}
                 tabIndex={isSelected || isFirstRow ? 0 : -1}
-                onClick={() => {
-                  setSelectedOrderId(order.orderNumber);
-                  setOpenOrderId(order.orderNumber);
-                }}
-                onKeyDown={(event) => handleKeyDown(event, order.orderNumber)}
-                className={isSelected ? 'selected' : ''}
-              >
-                <td>{order.orderNumber}</td>
-                <td>{order.customerName}</td>
-                <td>{order.status}</td>
-                <td>{order.total.toFixed(2)}</td>
-                <td>{new Date(order.date).toLocaleDateString()}</td>
-              </tr>
+                onClick={handleRowClick}
+                onKeyDown={handleKeyDown}
+                registerRef={getRegisterRef(order.orderNumber)}
+              />
             );
           })}
         </tbody>
