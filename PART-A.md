@@ -123,3 +123,9 @@ Reject the proposal. Virtualising removes off screen rows from the DOM entirely,
 Instead I would use content-visibility: auto on each row. Every row stays a real DOM node with real text, so Ctrl-P and Ctrl-F keep working, but the browser skips layout and paint for off screen rows, which is likely most of the six seconds, without removing anything from the DOM.
 
 The cost: DOM node count and memory usage do not shrink, all 3,000 rows are still managed by the browser and React. It scales worse than true virtualisation, so well beyond a few thousand rows this stops being enough, and a separate print specific render alongside virtualisation would eventually be needed.
+
+Q7
+
+I would fix the three forms. Silent data loss is worse than a slow load, a user can type real information, hit submit, and lose everything with no warning, which damages trust far more in a live demo than a four second freeze that is at least explainable.
+
+The 12,000 row table still freezes for about four seconds, that stays broken. To the person who wanted virtualisation: the performance issue is real, but it is recoverable, you can narrate through a slow load. Losing typed input live is not recoverable once it happens, so it is the higher risk problem with only two days, and virtualisation should follow right after the demo.
